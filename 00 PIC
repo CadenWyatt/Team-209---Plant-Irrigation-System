@@ -1,1 +1,133 @@
+#include "mcc_generated_files/mcc.h"
+#include <stdio.h>
+#include"mcc_generated_files/examples/i2c1_master_example.h"
+#include "mcc_generated_files/adcc.h"
+
+adc_result_t ADCvalue;
+uint8_t data[]={0xEE,0xAA};
+uint8_t choice;
+uint8_t result;
+uint8_t Pinread;
+uint8_t ADCvalue2;
+uint8_t result2;
+uint8_t newval;
+
+void myISR(void)
+{
+    while(result2 == HIGH)
+    {
+        ADCC_StartConversion(channel_ANC7);
+        Pinread = ADCC_GetConversionResult();
+        float C = .0032;
+        newval = Pinread*C;
+        
+        if(newval <= 3.5000)
+        {
+            __delay_ms(1000);
+            result2 = 0;
+        }
+        
+        if(newval  >= 4.000)
+        {
+            
+            LED_0_SetHigh();
+            __delay_ms(2000);
+            LED_0_SetLow();
+            result2 = 1;
+        }
+    }
+}
+
+void PumpOn(void)
+{
+    RB7_SetLow();
+    latch_SetLow();
+    __delay_ms(1);
+    RB5_SetHigh();
+    __delay_ms(1);
+    RB7_SetHigh();
+    __delay_ms(1);
+    latch_SetHigh();
+    __delay_ms(500);    
+}
+
+void PumpOff(void)
+{
+    RB7_SetLow();
+    latch_SetLow();
+    __delay_ms(1);
+    RB5_SetLow();
+    __delay_ms(1);
+    RB7_SetHigh();
+    __delay_ms(1);
+    latch_SetHigh();
+    __delay_ms(500);    
+}
+/*
+                         Main application
+ */
+void main(void)
+{
+    // Initialize the device
+    SYSTEM_Initialize();
+    ADCC_Initialize();
+    ADCC_SetADIInterruptHandler(myISR);
+    UART2_Initialize();
+    I2C1_Initialize();
+    I2C1_WriteNBytes(0x48,data,2);
+    uint16_t value = 0;
+    
+    INTERRUPT_GlobalInterruptEnable();
+
+    while (1)
+    {
+        ADCC_StartConversion(channel_ANC7);
+        ADCvalue = ADCC_GetConversionResult();
+        float I = .0032;
+        result = (I*ADCvalue); 
+        uint8_t out = ADCvalue/75;
+        
+        if(result >= 4.0000)
+        {
+            result2 = 1;
+        }
+    
+      LED_SetLow();
+      PumpOff();
+      value = I2C1_Read2ByteRegister(0x48,0xAA);
+      uint8_t value1 = value/255;
+      uint8_t Temp = value1;
+      
+      //If Temp reads higher than 35 degrees celsius.
+        if(value > 8900)
+        {
+         PumpOn();
+         LED_SetHigh();
+         __delay_ms(5000);
+         PumpOff();
+         LED_SetLow();
+        }
+      
+        choice = UART2_Read();
+        uint8_t Weight = out;   
+        // MQTT
+        // read from ESP32
+        //choice = UART2_Read();
+        switch(choice){
+            case 't': 
+                printf("Temp %d\r", Temp);
+                break;
+            case 'w':
+                printf("Weight %d\r", Weight);
+                break;
+            case 'c':
+                printf("Temp Weight %d %d\r", Temp, Weight);
+                
+            //default:
+                //printf("Please Type a, b, c\r");
+        }
+      }
+
+
+    }
 
